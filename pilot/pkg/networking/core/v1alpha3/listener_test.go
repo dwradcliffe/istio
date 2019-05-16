@@ -410,12 +410,16 @@ func TestOutboundListenerAccessLogs(t *testing.T) {
 	t.Helper()
 	p := &fakePlugin{}
 	listeners := buildAllListeners(p, nil)
-	fc := &tcp_proxy.TcpProxy{}
-	if err := getFilterConfig(listeners[0].FilterChains[0].Filters[0], fc); err != nil {
-		t.Fatalf("failed to get TCP Proxy config: %s", err)
-	}
-	if fc.AccessLog == nil {
-		t.Fatal("expected access log configuration")
+	for _, l := range listeners {
+		if l.Name == "virtual" {
+			fc := &tcp_proxy.TcpProxy{}
+			if err := getFilterConfig(l.FilterChains[0].Filters[0], fc); err != nil {
+				t.Fatalf("failed to get TCP Proxy config: %s", err)
+			}
+			if fc.AccessLog == nil {
+				t.Fatal("expected access log configuration")
+			}
+		}
 	}
 }
 
