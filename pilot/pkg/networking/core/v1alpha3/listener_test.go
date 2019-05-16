@@ -16,12 +16,15 @@ package v1alpha3
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
 	xdsapi "github.com/envoyproxy/go-control-plane/envoy/api/v2"
+	"github.com/envoyproxy/go-control-plane/envoy/api/v2/listener"
+	tcp_proxy "github.com/envoyproxy/go-control-plane/envoy/config/filter/network/tcp_proxy/v2"
+	"github.com/envoyproxy/go-control-plane/pkg/util"
 	xdsutil "github.com/envoyproxy/go-control-plane/pkg/util"
+	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
 
 	networking "istio.io/api/networking/v1alpha3"
@@ -407,7 +410,11 @@ func TestOutboundListenerAccessLogs(t *testing.T) {
 	t.Helper()
 	p := &fakePlugin{}
 	listeners := buildAllListeners(p, nil)
-	if !strings.Contains(listeners[0].FilterChains[0].Filters[0].String(), "access_log") {
+	fc := &tcp_proxy.TcpProxy{}
+	if err := getFilterConfig(listeners[0].FilterChains[0].Filters[0], fc); err != nil {
+		t.Fatalf("failed to get TCP Proxy config: %s", err)
+	}
+	if fc.AccessLog == nil {
 		t.Fatal("expected access log configuration")
 	}
 }
@@ -528,6 +535,20 @@ func buildAllListeners(p plugin.Plugin, sidecarConfig *model.Config, services ..
 	}
 
 	return listeners
+}
+
+func getFilterConfig(filter listener.Filter, out proto.Message) error {
+	switch c := filter.ConfigType.(type) {
+	case *listener.Filter_Config:
+		if err := util.StructToMessage(c.Config, out); err != nil {
+			return err
+		}
+	case *listener.Filter_TypedConfig:
+		if err := types.UnmarshalAny(c.TypedConfig, out); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func buildOutboundListeners(p plugin.Plugin, sidecarConfig *model.Config, services ...*model.Service) []*xdsapi.Listener {
