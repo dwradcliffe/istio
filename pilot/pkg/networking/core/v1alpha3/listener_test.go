@@ -16,6 +16,7 @@ package v1alpha3
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -402,6 +403,15 @@ func testOutboundListenerConfigWithSidecarWithCaptureModeNone(t *testing.T, serv
 	}
 }
 
+func TestOutboundListenerAccessLogs(t *testing.T) {
+	t.Helper()
+	p := &fakePlugin{}
+	listeners := buildAllListeners(p, nil)
+	if !strings.Contains(listeners[0].FilterChains[0].Filters[0].String(), "access_log") {
+		t.Fatal("expected access log configuration")
+	}
+}
+
 func verifyOutboundTCPListenerHostname(t *testing.T, l *xdsapi.Listener, hostname model.Hostname) {
 	t.Helper()
 	if len(l.FilterChains) != 1 {
@@ -496,6 +506,28 @@ func getOldestService(services ...*model.Service) *model.Service {
 		}
 	}
 	return oldestService
+}
+
+func buildAllListeners(p plugin.Plugin, sidecarConfig *model.Config, services ...*model.Service) []*xdsapi.Listener {
+	configgen := NewConfigGenerator([]plugin.Plugin{p})
+
+	env := buildListenerEnv(services)
+
+	if err := env.PushContext.InitContext(&env); err != nil {
+		return nil
+	}
+
+	if sidecarConfig == nil {
+		proxy.SidecarScope = model.DefaultSidecarScopeForNamespace(env.PushContext, "not-default")
+	} else {
+		proxy.SidecarScope = model.ConvertToSidecarScope(env.PushContext, sidecarConfig, sidecarConfig.Namespace)
+	}
+	listeners, err := configgen.buildSidecarListeners(&env, &proxy, env.PushContext)
+	if err != nil {
+		return nil
+	}
+
+	return listeners
 }
 
 func buildOutboundListeners(p plugin.Plugin, sidecarConfig *model.Config, services ...*model.Service) []*xdsapi.Listener {
